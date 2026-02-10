@@ -31,7 +31,7 @@ String Class - 高效字符串实现
 快速开始
 
 基本使用
-
+```
 #include "string.hpp"
 
 int main() {
@@ -47,10 +47,10 @@ int main() {
     std::cout << str1 << std::endl;        // 输出: World!123
     return 0;
 }
-
+```
 
 字符串操作
-
+```
 // 连接操作
 cgui::String s1 = "Hello";
 cgui::String s2 = s1 + " World";           // 字符串连接
@@ -70,10 +70,10 @@ size_t rpos = s1.rfind('o');              // 反向查找字符
 // 大小写转换
 cgui::String upper = s1.to_upper();       // 转大写
 cgui::String lower = s1.to_lower();       // 转小写
-
+```
 
 流操作
-
+```
 #include <sstream>
 
 // 输入输出
@@ -89,7 +89,7 @@ std::getline(std::cin, line);
 std::stringstream ss;
 ss << "Result: " << input;
 cgui::String result = ss.str();
-
+```
 
 API参考
 
@@ -194,7 +194,7 @@ SSO优化
 • 内存布局: 自动选择最优存储方式
 
 内存管理
-
+```
 // SSO模式（栈存储）
 struct {
     char data[15];  // 14字符 + null终止符
@@ -207,7 +207,7 @@ struct {
     size_type size;  // 字符串大小
     size_type capacity; // 分配容量
 };
-
+```
 
 分配策略
 
@@ -224,6 +224,7 @@ struct {
 自定义分配器
 
 通过修改Allocator结构体实现自定义内存管理：
+```
 struct CustomAllocator {
     static char* allocate(size_type size) {
         return static_cast<char*>(my_malloc(size + 1));
@@ -232,10 +233,10 @@ struct CustomAllocator {
         my_free(ptr);
     }
 };
-
+```
 
 迭代器支持
-
+```
 cgui::String str = "Hello";
 for (auto& ch : str) {  // 基于范围的for循环
     ch = std::toupper(ch);
@@ -248,7 +249,7 @@ while (it != end) {
     // 处理字符
     ++it;
 }
-
+```
 
 异常安全
 
@@ -267,7 +268,7 @@ g++ -std=c++11 -O2 -I. your_program.cpp
 
 
 优化选项
-
+```
 # 启用SSO优化（默认启用）
 g++ -DUSE_SSO=1
 
@@ -276,7 +277,7 @@ g++ -DSSO_CAPACITY=23
 
 # 禁用异常（嵌入式环境）
 g++ -fno-exceptions
-
+```
 
 平台兼容性
 
@@ -303,7 +304,7 @@ g++ -fno-exceptions
 示例项目
 
 简单日志系统
-
+```
 #include "string.hpp"
 #include <fstream>
 
@@ -327,10 +328,10 @@ public:
         buffer.clear();
     }
 };
-
+```
 
 配置文件解析
-
+```
 #include "string.hpp"
 #include <vector>
 #include <algorithm>
@@ -367,12 +368,12 @@ private:
         return str.substr(first, last - first);
     }
 };
-
+```
 
 性能对比
 
 与std::string对比
-
+```
 // 测试代码片段
 cgui::String fast_str;
 std::string std_str;
@@ -386,7 +387,7 @@ for (int i = 0; i < 1000000; ++i) {
 // 大字符串操作
 cgui::String large_fast = "A very long string...";
 std::string large_std = "A very long string...";
-
+```
 
 内存使用
 
@@ -425,13 +426,13 @@ std::string large_std = "A very long string...";
 • 其他错误无异常保证
 
 4. 调试支持
-
+```
 // 启用调试输出
 #define STRING_DEBUG 1
 
 // 内存泄漏检测
 valgrind --leak-check=full ./program
-
+```
 
 许可证
 
