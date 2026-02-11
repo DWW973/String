@@ -42,9 +42,9 @@ using namespace cgui;
 
 int main() {
     // 创建字符串
-    String str1 = "Hello";
-    String str2("World");
-    String str3(10, '!');
+    BasicString<> str1 = "Hello";  // 或使用 using String = BasicString<>;
+    BasicString<> str2("World");
+    BasicString<> str3(10, '!');
     
     // 字符串操作
     str1 += " " + str2 + str3;
@@ -52,9 +52,28 @@ int main() {
     
     // 查找和替换
     size_t pos = str1.find("World");
-    if (pos != String::npos) {
+    if (pos != BasicString<>::npos) {
         str1.replace(pos, 5, "Universe");
     }
+    
+    return 0;
+}
+
+
+使用 String 别名（推荐）
+
+#include "string.hpp"
+
+using namespace cgui;
+
+// 使用 String 别名简化代码
+int main() {
+    String str1 = "Hello";
+    String str2("World");
+    String str3(10, '!');
+    
+    str1 += " " + str2 + str3;
+    std::cout << str1 << std::endl;
     
     return 0;
 }
@@ -75,7 +94,7 @@ String buildString() {
     result.reserve(1000);  // 预先分配足够空间
     
     for (int i = 0; i < 1000; ++i) {
-        result += std::to_string(i);
+        result += std::to_string(i);  // 使用标准库转换
     }
     return result;
 }
@@ -87,15 +106,15 @@ API 参考
 
 方法 描述 复杂度
 
-String() 默认构造 O(1)
+BasicString() 默认构造 O(1)
 
-String(const char*) C字符串构造 O(n)
+BasicString(const char*) C字符串构造 O(n)
 
-String(size_t, char) 重复字符构造 O(n)
+BasicString(size_t, char) 重复字符构造 O(n)
 
-String(const String&) 拷贝构造 O(n)
+BasicString(const BasicString&) 拷贝构造 O(n)
 
-String(String&&) 移动构造 O(1)
+BasicString(BasicString&&) 移动构造 O(1)
 
 operator= 赋值操作 O(n)
 容量操作
@@ -156,8 +175,9 @@ str += 42;           // 整数
 str += 3.14;         // 浮点数
 str += 100ULL;       // 长整数
 
+// 使用标准库转换函数
 int value = 123;
-str = String::number(value);  // 数值转字符串
+str += std::to_string(value);  // 使用标准库函数
 
 
 性能指南
@@ -231,6 +251,25 @@ try {
 } catch (const std::bad_alloc& e) {
     // 内存分配失败，str 保持原状
 }
+
+
+字符串操作
+
+String str = "  Hello World  ";
+
+// 大小写转换
+String lower = str.to_lower();  // 返回新字符串
+String upper = str.to_upper();  // 返回新字符串
+
+// 去除空白字符
+str.trim();        // 原地修改
+str.trim_left();   // 去除左侧空白
+str.trim_right();  // 去除右侧空白
+
+// 检查前缀和后缀
+if (str.starts_with("Hello")) { /* ... */ }
+if (str.ends_with("World")) { /* ... */ }
+if (str.contains("lo")) { /* ... */ }
 
 
 调试支持
@@ -313,6 +352,44 @@ String processText(String text) {
               .replace("old", "new")     // 替换
               .substr(0, 100);          // 截取
 }
+
+
+高效字符串构建
+
+String buildQuery(const std::vector<String>& params) {
+    String query;
+    query.reserve(256);  // 预分配空间
+    
+    query += "SELECT * FROM table WHERE ";
+    for (size_t i = 0; i < params.size(); ++i) {
+        if (i > 0) query += " AND ";
+        query += "field" + std::to_string(i) + " = '" + params[i] + "'";
+    }
+    
+    return query;
+}
+
+
+常见问题
+
+Q: 如何选择 BasicString 还是 String？
+
+A: 大多数情况下使用 String 别名即可。只有在需要自定义分配器时才使用 BasicString<YourAllocator>。
+
+Q: 性能比 std::string 好多少？
+
+A: 对于小字符串操作（≤23字节），性能提升显著（20-30%）。对于大字符串操作，性能相当或略有优势。
+
+Q: 是否线程安全？
+
+A: 与 std::string 相同，多个线程读取是安全的，但并发修改需要外部同步。
+
+Q: 如何转换数字到字符串？
+
+A: 使用标准库函数：
+String str;
+str += std::to_string(42);      // 整数
+str += std::to_string(3.14);    // 浮点数
 
 
 许可证
