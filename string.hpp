@@ -2,16 +2,6 @@
  * @file string.hpp
  * @brief 字符串类的定义和实现
  * @details 实现了一个高效的字符串类，支持SSO（Small String Optimization）优化
- * MIT 许可证
- * 版权所有 (c) 2026 鼎天立地 (gitcode) 与 ProgramForge 组织 (GitHub)
- * 特此免费授予任何获得本软件及相关文档文件（以下简称"软件"）副本的人，不受限制地处理本软件的权利，包括但不限于使用、复制、修改、合并、发布、分发、再许可和/或销售本软件的副本，并允许接受本软件的人这样做，但须符合以下条件：
- * 上述版权声明和本许可声明应包含在本软件的所有副本或重要部分中。
- * 本软件"按原样"提供，不提供任何形式的明示或暗示保证，包括但不限于对适销性、特定用途适用性和非侵权性的保证。在任何情况下，作者或版权持有人均不对因本软件或本软件的使用或其他交易而引起的任何索赔、损害或其他责任负责，无论是在合同诉讼、侵权诉讼还是其他诉讼中。
- * MIT License
- * Copyright (c) 2026 Dingtian Lidi (gitcode) and ProgramForge Organization (GitHub)
- * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
- * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
- * The Software is provided "as is", without warranty of any kind, express or implied, including but not limited to the warranties of merchantability, fitness for a particular purpose, and noninfringement. In no event shall the authors or copyright holders be liable for any claim, damages, or other liability, whether in an action of contract, tort, or otherwise, arising from, out of, or in connection with the Software or the use or other dealings in the Software.
  */
 #ifndef STRING_HPP
 #define STRING_HPP
@@ -37,6 +27,7 @@
 #include <cstdio>
 #include <vector>
 #include <string>
+#include <limits>
 
 namespace NAMESPACE {
 
@@ -75,7 +66,7 @@ namespace NAMESPACE {
         /**
          * @brief 无效位置标记
          */
-        static constexpr size_type npos = static_cast<size_type>(-1);
+        static constexpr size_type npos = std::numeric_limits<size_type>::max();
         /**
          * @brief SSO容量
          * @details 减少1以适应null结尾符
@@ -218,6 +209,11 @@ namespace NAMESPACE {
             size_type curr_size = size();
             
             try {
+                // 检查new_ptr是否有效
+                if (new_ptr == nullptr) {
+                    throw std::bad_alloc();
+                }
+                
                 // 复制数据
                 if (curr_size > 0) {
                     // 使用std::copy_n代替std::memcpy，提供更好的异常安全性
@@ -478,7 +474,7 @@ namespace NAMESPACE {
             } else {
                 // 复制堆数据
                 storage.large.size = other.storage.large.size;
-                storage.large.capacity = other.storage.large.size;
+                storage.large.capacity = other.storage.large.capacity;
                 storage.large.ptr = allocator_.allocate(storage.large.capacity + 1);
                 std::memcpy(storage.large.ptr, other.storage.large.ptr, storage.large.size + 1);
                 set_sso_flag(false);
@@ -498,7 +494,7 @@ namespace NAMESPACE {
             } else {
                 // 复制堆数据
                 storage.large.size = other.storage.large.size;
-                storage.large.capacity = other.storage.large.size;
+                storage.large.capacity = other.storage.large.capacity;
                 storage.large.ptr = allocator_.allocate(storage.large.capacity + 1);
                 std::memcpy(storage.large.ptr, other.storage.large.ptr, storage.large.size + 1);
                 set_sso_flag(false);
@@ -538,7 +534,7 @@ namespace NAMESPACE {
             } else {
                 // 复制堆数据（因为分配器不同，不能直接移动）
                 storage.large.size = other.storage.large.size;
-                storage.large.capacity = other.storage.large.size;
+                storage.large.capacity = other.storage.large.capacity;
                 storage.large.ptr = allocator_.allocate(storage.large.capacity + 1);
                 std::memcpy(storage.large.ptr, other.storage.large.ptr, storage.large.size + 1);
                 set_sso_flag(false);
@@ -579,28 +575,9 @@ namespace NAMESPACE {
          * @return 自身引用
          */
         BasicString& operator=(BasicString&& other) noexcept {
-            if (this != &other) {
-                // 释放自身内存
-                if (!is_sso()) {
-                    allocator_.deallocate(storage.large.ptr, storage.large.capacity + 1);
-                }
-                
-                // 复制或移动数据
-                if (other.is_sso()) {
-                    std::memcpy(&storage.sso, &other.storage.sso, sizeof(storage.sso));
-                } else {
-                    storage.large = other.storage.large;
-                    set_sso_flag(false);
-                }
-                
-                // 移动分配器
-                allocator_ = std::move(other.allocator_);
-                
-                // 重置原字符串
-                other.set_sso_flag(true);
-                other.set_sso_size(0);
-                other.storage.sso.data[0] = '\0';
-            }
+            // 使用copy-and-swap idiom确保异常安全和分配器一致性
+            BasicString temp(std::move(other));
+            swap(temp);
             return *this;
         }
 
@@ -780,16 +757,12 @@ namespace NAMESPACE {
          * @brief 下标运算符
          * @param pos 位置
          * @return 字符引用
-         * @details 添加边界检查，超出范围返回第一个字符的引用（如果为空则返回内部缓冲区的第一个字符）
+         * @details 添加边界检查，超出范围抛出异常
+         * @throw std::out_of_range 位置越界
          */
-        char& operator[](size_type pos) noexcept {
-            if (empty()) {
-                // 空字符串，返回内部缓冲区的第一个字符
-                return storage.sso.data[0];
-            }
+        char& operator[](size_type pos) {
             if (pos >= size()) {
-                // 超出范围，返回最后一个字符的引用
-                return data_ptr()[size() - 1];
+                throw std::out_of_range("BasicString::operator[] - index out of range");
             }
             return data_ptr()[pos];
         }
@@ -1028,11 +1001,24 @@ namespace NAMESPACE {
             size_type new_size = curr_size + len;
             
             // 小字符串优化：对于小追加，避免函数调用开销
-            if (len <= 4 && new_size <= capacity()) {
-                // 内联的小追加优化
+            if (len <= 4 && new_size <= capacity() && curr_size <= capacity() - len) {
+                // 检查自引用情况
                 char* dst = data_ptr();
-                for (size_type i = 0; i < len; ++i) {
-                    dst[curr_size + i] = str[i];
+                if (str >= dst && str < dst + curr_size) {
+                    // 源字符串指向自身数据，先复制到临时缓冲区
+                    char temp[5]; // 足够容纳4个字符加终止符
+                    std::memcpy(temp, str, len);
+                    temp[len] = '\0';
+                    
+                    // 从临时缓冲区复制
+                    for (size_type i = 0; i < len; ++i) {
+                        dst[curr_size + i] = temp[i];
+                    }
+                } else {
+                    // 正常情况
+                    for (size_type i = 0; i < len; ++i) {
+                        dst[curr_size + i] = str[i];
+                    }
                 }
                 dst[new_size] = '\0';
                 
@@ -1182,62 +1168,6 @@ namespace NAMESPACE {
         }
 
         /**
-         * @brief 追加整数
-         * @param value 整数
-         * @return 自身引用
-         */
-        BasicString& operator+=(int value) {
-            char buffer[16];
-            int len = std::snprintf(buffer, sizeof(buffer), "%d", value);
-            if (len > 0) {
-                append(buffer, static_cast<size_t>(len));
-            }
-            return *this;
-        }
-
-        /**
-         * @brief 追加长整数
-         * @param value 长整数
-         * @return 自身引用
-         */
-        BasicString& operator+=(long value) {
-            char buffer[32];
-            int len = std::snprintf(buffer, sizeof(buffer), "%ld", value);
-            if (len > 0) {
-                append(buffer, static_cast<size_t>(len));
-            }
-            return *this;
-        }
-
-        /**
-         * @brief 追加无符号整数
-         * @param value 无符号整数
-         * @return 自身引用
-         */
-        BasicString& operator+=(unsigned int value) {
-            char buffer[16];
-            int len = std::snprintf(buffer, sizeof(buffer), "%u", value);
-            if (len > 0) {
-                append(buffer, static_cast<size_t>(len));
-            }
-            return *this;
-        }
-
-        /**
-         * @brief 追加无符号长整数
-         * @param value 无符号长整数
-         * @return 自身引用
-         */
-        BasicString& operator+=(unsigned long value) {
-            char buffer[32];
-            int len = std::snprintf(buffer, sizeof(buffer), "%lu", value);
-            if (len > 0) {
-                append(buffer, static_cast<size_t>(len));
-            }
-            return *this;
-        }
-
-        /**
          * @brief 添加字符到末尾
          * @param c 字符
          */
@@ -1293,9 +1223,23 @@ namespace NAMESPACE {
             char* data = data_ptr();
             if (str >= data && str < data + curr_size) {
                 // 源字符串指向自身数据，先复制到临时缓冲区
-                char* temp = allocator_.allocate(len + 1);
-                std::memcpy(temp, str, len);
-                temp[len] = '\0';
+                // 使用RAII管理临时内存
+                struct TempBuffer {
+                    char* ptr;
+                    size_type size;
+                    allocator_type& allocator;
+                    
+                    TempBuffer(size_type sz, allocator_type& alloc) : size(sz), allocator(alloc) {
+                        ptr = allocator.allocate(size);
+                    }
+                    
+                    ~TempBuffer() {
+                        allocator.deallocate(ptr, size);
+                    }
+                } temp(len + 1, allocator_);
+                
+                std::memcpy(temp.ptr, str, len);
+                temp.ptr[len] = '\0';
                 
                 if (new_size > capacity()) {
                     reserve(new_size);
@@ -1304,10 +1248,8 @@ namespace NAMESPACE {
                 // 重新获取data指针，因为reserve可能改变了它
                 data = data_ptr();
                 std::memmove(data + pos + len, data + pos, curr_size - pos);
-                std::memcpy(data + pos, temp, len);
+                std::memcpy(data + pos, temp.ptr, len);
                 data[new_size] = '\0';
-                
-                allocator_.deallocate(temp, len + 1);
             } else {
                 // 正常情况
                 if (new_size > capacity()) {
@@ -1433,7 +1375,7 @@ namespace NAMESPACE {
          * @return 位置
          */
         size_type find(const char* str, size_type pos = 0) const noexcept {
-            if (pos >= size() || str[0] == '\0') return npos;
+            if (pos >= size() || str == nullptr || str[0] == '\0') return npos;
             
             const char* data = data_ptr();
             size_type data_len = size();
@@ -1441,9 +1383,13 @@ namespace NAMESPACE {
             
             if (pos + str_len > data_len) return npos;
             
-            // 使用strstr进行查找，更高效
-            const char* result = std::strstr(data + pos, str);
-            if (result == nullptr) return npos;
+            // 使用std::search进行查找，更安全，不会读取到缓冲区之外
+            const char* start = data + pos;
+            const char* end = data + data_len;
+            const char* str_end = str + str_len;
+            
+            const char* result = std::search(start, end, str, str_end);
+            if (result == end) return npos;
             return static_cast<size_type>(result - data);
         }
         
@@ -1540,88 +1486,59 @@ namespace NAMESPACE {
             char* data = data_ptr();
             if (str >= data && str < data + curr_size) {
                 // 源字符串指向自身数据，先复制到临时缓冲区
-                char* temp_str = allocator_.allocate(str_len + 1);
-                std::memcpy(temp_str, str, str_len);
-                temp_str[str_len] = '\0';
+                // 使用RAII管理临时内存
+                struct TempBuffer {
+                    char* ptr;
+                    size_type size;
+                    allocator_type& allocator;
+                    
+                    TempBuffer(size_type sz, allocator_type& alloc) : size(sz), allocator(alloc) {
+                        ptr = allocator.allocate(size);
+                    }
+                    
+                    ~TempBuffer() {
+                        allocator.deallocate(ptr, size);
+                    }
+                } temp(str_len + 1, allocator_);
                 
-                if (new_size <= capacity() * 2) {
-                    // 在现有空间内替换
-                    if (str_len == erase_len && new_size <= capacity()) {
-                        // 小替换优化：长度相等且容量足够，直接原地替换
-                        std::memcpy(data + pos, temp_str, str_len);
-                    } else {
-                        if (pos + erase_len < curr_size) {
-                            std::memmove(data + pos + str_len, data + pos + erase_len, curr_size - (pos + erase_len));
-                        }
-                        std::memcpy(data + pos, temp_str, str_len);
-                    }
-                    data[new_size] = '\0';
-                    
-                    if (!is_sso()) {
-                        storage.large.size = new_size;
-                    } else {
-                        set_sso_size(static_cast<uint8_t>(new_size));
-                    }
-                } else {
-                    // 需要重新分配空间
-                    BasicString temp(get_allocator());
-                    temp.reserve(new_size);
-                    
-                    if (pos > 0) {
-                        temp.append(data, pos);
-                    }
-                    
-                    if (str_len > 0) {
-                        temp.append(temp_str, str_len);
-                    }
-                    
-                    if (pos + erase_len < curr_size) {
-                        temp.append(data + pos + erase_len, curr_size - (pos + erase_len));
-                    }
-                    
-                    swap(temp);
+                std::memcpy(temp.ptr, str, str_len);
+                temp.ptr[str_len] = '\0';
+                
+                // 使用copy-and-swap idiom确保强异常安全
+                BasicString temp_str(get_allocator());
+                temp_str.reserve(new_size);
+                
+                if (pos > 0) {
+                    temp_str.append(data, pos);
                 }
                 
-                allocator_.deallocate(temp_str, str_len + 1);
+                if (str_len > 0) {
+                    temp_str.append(temp.ptr, str_len);
+                }
+                
+                if (pos + erase_len < curr_size) {
+                    temp_str.append(data + pos + erase_len, curr_size - (pos + erase_len));
+                }
+                
+                swap(temp_str);
             } else {
-                // 正常情况
-                if (new_size <= capacity() * 2) {
-                    // 在现有空间内替换
-                    if (str_len == erase_len && new_size <= capacity()) {
-                        // 小替换优化：长度相等且容量足够，直接原地替换
-                        std::memcpy(data + pos, str, str_len);
-                    } else {
-                        if (pos + erase_len < curr_size) {
-                            std::memmove(data + pos + str_len, data + pos + erase_len, curr_size - (pos + erase_len));
-                        }
-                        std::memcpy(data + pos, str, str_len);
-                    }
-                    data[new_size] = '\0';
-                    
-                    if (!is_sso()) {
-                        storage.large.size = new_size;
-                    } else {
-                        set_sso_size(static_cast<uint8_t>(new_size));
-                    }
-                } else {
-                    // 需要重新分配空间
-                    BasicString temp(get_allocator());
-                    temp.reserve(new_size);
-                    
-                    if (pos > 0) {
-                        temp.append(data, pos);
-                    }
-                    
-                    if (str_len > 0) {
-                        temp.append(str, str_len);
-                    }
-                    
-                    if (pos + erase_len < curr_size) {
-                        temp.append(data + pos + erase_len, curr_size - (pos + erase_len));
-                    }
-                    
-                    swap(temp);
+                // 正常情况，使用copy-and-swap idiom确保强异常安全
+                BasicString temp_str(get_allocator());
+                temp_str.reserve(new_size);
+                
+                if (pos > 0) {
+                    temp_str.append(data, pos);
                 }
+                
+                if (str_len > 0) {
+                    temp_str.append(str, str_len);
+                }
+                
+                if (pos + erase_len < curr_size) {
+                    temp_str.append(data + pos + erase_len, curr_size - (pos + erase_len));
+                }
+                
+                swap(temp_str);
             }
             
             return *this;
@@ -1666,7 +1583,7 @@ namespace NAMESPACE {
          * @brief 从string_view构造
          * @param sv string_view
          */
-        #if __has_include(<string_view>)
+        #if __cplusplus >= 201703L && __has_include(<string_view>)
         #include <string_view>
 
         BasicString(std::string_view sv) {
@@ -1750,7 +1667,8 @@ namespace NAMESPACE {
          * @return 最大大小
          */
         size_type max_size() const noexcept {
-            return static_cast<size_type>(-1) / 2;  // 合理的大小限制
+            // 使用std::allocator_traits获取分配器的最大大小
+            return std::allocator_traits<allocator_type>::max_size(allocator_);
         }
 
         /**
@@ -2022,6 +1940,7 @@ namespace NAMESPACE {
          * @return 位置
          */
         size_type find_first_not_of(const char* str, size_type pos = 0) const noexcept {
+            if (str == nullptr) return npos;
             return find_first_not_of(str, pos, std::strlen(str));
         }
 
@@ -2064,6 +1983,7 @@ namespace NAMESPACE {
          * @return 位置
          */
         size_type find_last_not_of(const char* str, size_type pos = npos) const noexcept {
+            if (str == nullptr) return npos;
             return find_last_not_of(str, pos, std::strlen(str));
         }
 
@@ -2099,6 +2019,153 @@ namespace NAMESPACE {
          */
         size_type rfind(const BasicString& str, size_type pos = npos) const noexcept {
             return rfind(str.data_ptr(), pos);
+        }
+
+        /**
+         * @brief 转换为整数
+         * @return 整数值
+         * @throw std::invalid_argument 如果字符串不是有效的整数
+         */
+        int to_int() const {
+            char* end;  // 用于检测转换是否成功
+            long result = std::strtol(data_ptr(), &end, 10);
+            if (*end != '\0') {
+                throw std::invalid_argument("String is not a valid integer");
+            }
+            if (result < std::numeric_limits<int>::min() || result > std::numeric_limits<int>::max()) {
+                throw std::out_of_range("Integer value out of range");
+            }
+            return static_cast<int>(result);
+        }
+
+        /**
+         * @brief 转换为长整数
+         * @return 长整数值
+         * @throw std::invalid_argument 如果字符串不是有效的长整数
+         */
+        long to_long() const {
+            char* end;  // 用于检测转换是否成功
+            long result = std::strtol(data_ptr(), &end, 10);
+            if (*end != '\0') {
+                throw std::invalid_argument("String is not a valid long integer");
+            }
+            return result;
+        }
+
+        /**
+         * @brief 转换为无符号整数
+         * @return 无符号整数值
+         * @throw std::invalid_argument 如果字符串不是有效的无符号整数
+         */
+        unsigned int to_uint() const {
+            char* end;  // 用于检测转换是否成功
+            unsigned long result = std::strtoul(data_ptr(), &end, 10);
+            if (*end != '\0') {
+                throw std::invalid_argument("String is not a valid unsigned integer");
+            }
+            if (result > std::numeric_limits<unsigned int>::max()) {
+                throw std::out_of_range("Unsigned integer value out of range");
+            }
+            return static_cast<unsigned int>(result);
+        }
+
+        /**
+         * @brief 转换为无符号长整数
+         * @return 无符号长整数值
+         * @throw std::invalid_argument 如果字符串不是有效的无符号长整数
+         */
+        unsigned long to_ulong() const {
+            char* end;  // 用于检测转换是否成功
+            unsigned long result = std::strtoul(data_ptr(), &end, 10);
+            if (*end != '\0') {
+                throw std::invalid_argument("String is not a valid unsigned long integer");
+            }
+            return result;
+        }
+
+        /**
+         * @brief 转换为双精度浮点数
+         * @return 双精度浮点数值
+         * @throw std::invalid_argument 如果字符串不是有效的浮点数
+         */
+        double to_double() const {
+            char* end;  // 用于检测转换是否成功
+            double result = std::strtod(data_ptr(), &end);
+            if (*end != '\0') {
+                throw std::invalid_argument("String is not a valid double");
+            }
+            return result;
+        }
+
+        /**
+         * @brief 转换为单精度浮点数
+         * @return 单精度浮点数值
+         * @throw std::invalid_argument 如果字符串不是有效的浮点数
+         */
+        float to_float() const {
+            char* end;  // 用于检测转换是否成功
+            float result = std::strtof(data_ptr(), &end);
+            if (*end != '\0') {
+                throw std::invalid_argument("String is not a valid float");
+            }
+            return result;
+        }
+
+        /**
+         * @brief 检查字符串是否为有效的数字
+         * @return 是否为有效的数字
+         */
+        bool is_number() const noexcept {
+            char* end;
+            std::strtod(data_ptr(), &end);
+            return *end == '\0' && !empty();
+        }
+
+        /**
+         * @brief 检查字符串是否为有效的整数
+         * @return 是否为有效的整数
+         */
+        bool is_integer() const noexcept {
+            char* end;
+            std::strtol(data_ptr(), &end, 10);
+            return *end == '\0' && !empty();
+        }
+
+        /**
+         * @brief 检查字符串是否为有效的浮点数
+         * @return 是否为有效的浮点数
+         */
+        bool is_float() const noexcept {
+            char* end;
+            std::strtod(data_ptr(), &end);
+            return *end == '\0' && !empty();
+        }
+
+        /**
+         * @brief 格式化数字
+         * @param value 数值
+         * @param precision 精度（小数位数）
+         * @return 格式化后的字符串
+         */
+        template<typename T>
+        static BasicString format_number(T value, int precision = 2) {
+            BasicString result;
+            char buffer[64];
+            int len;
+            
+            if constexpr (std::is_integral<T>::value) {
+                len = std::snprintf(buffer, sizeof(buffer), "%lld", static_cast<long long>(value));
+            } else {
+                char format[16];
+                std::snprintf(format, sizeof(format), "%%.%df", precision);
+                len = std::snprintf(buffer, sizeof(buffer), format, value);
+            }
+            
+            if (len > 0 && len < static_cast<int>(sizeof(buffer))) {
+                result.append(buffer, static_cast<size_type>(len));
+            }
+            
+            return result;
         }
 
     private:
@@ -2736,7 +2803,8 @@ namespace NAMESPACE {
         const size_t initial_buffer_size = 256;
         
         // 使用vector管理缓冲区，自动处理内存分配和释放
-        std::vector<char, Allocator> buffer(initial_buffer_size, str.get_allocator());
+        std::vector<char, Allocator> buffer(str.get_allocator());
+        buffer.reserve(initial_buffer_size);
         size_t pos = 0;
         
         while (true) {
@@ -2753,7 +2821,8 @@ namespace NAMESPACE {
             // 检查缓冲区是否已满
             if (pos >= buffer.size() - 1) {
                 // 动态增长缓冲区
-                buffer.resize(buffer.size() * 2);
+                size_t new_size = buffer.empty() ? initial_buffer_size : buffer.size() * 2;
+                buffer.resize(new_size);
             }
             
             buffer[pos++] = c;
